@@ -1,48 +1,93 @@
 """
-Database Schemas
+Database Schemas for the SaaS Trading Platform
 
-Define your MongoDB collection schemas here using Pydantic models.
-These schemas are used for data validation in your application.
-
-Each Pydantic model represents a collection in your database.
-Model name is converted to lowercase for the collection name:
-- User -> "user" collection
-- Product -> "product" collection
-- BlogPost -> "blogs" collection
+Each Pydantic model represents a collection in your MongoDB database.
+Collection name = lowercase class name. Example: Strategy -> "strategy"
 """
 
-from pydantic import BaseModel, Field
-from typing import Optional
+from pydantic import BaseModel, Field, EmailStr
+from typing import Optional, List, Literal, Dict, Any
+from datetime import datetime
 
-# Example schemas (replace with your own):
+# Core user/account models
+class ExchangeCredential(BaseModel):
+    exchange: Literal[
+        "alpaca",
+        "binance",
+        "binanceus",
+        "bybit",
+        "kraken",
+        "oanda",
+        "ibkr",
+        "polygon",
+        "tradier",
+        "tda",
+        "paper"
+    ]
+    api_key: Optional[str] = None
+    api_secret: Optional[str] = None
+    passphrase: Optional[str] = None
+    account_id: Optional[str] = None
+    sandbox: bool = True
+    label: Optional[str] = None
 
 class User(BaseModel):
-    """
-    Users collection schema
-    Collection name: "user" (lowercase of class name)
-    """
-    name: str = Field(..., description="Full name")
-    email: str = Field(..., description="Email address")
-    address: str = Field(..., description="Address")
-    age: Optional[int] = Field(None, ge=0, le=120, description="Age in years")
-    is_active: bool = Field(True, description="Whether user is active")
+    email: EmailStr
+    name: Optional[str] = None
+    plan: Literal["free", "pro", "enterprise"] = "free"
+    organization: Optional[str] = None
+    credentials: List[ExchangeCredential] = []
+    is_active: bool = True
 
-class Product(BaseModel):
-    """
-    Products collection schema
-    Collection name: "product" (lowercase of class name)
-    """
-    title: str = Field(..., description="Product title")
-    description: Optional[str] = Field(None, description="Product description")
-    price: float = Field(..., ge=0, description="Price in dollars")
-    category: str = Field(..., description="Product category")
-    in_stock: bool = Field(True, description="Whether product is in stock")
+# Strategy and trading models
+class Strategy(BaseModel):
+    name: str = Field(..., description="Strategy name")
+    description: Optional[str] = None
+    asset_class: Literal["forex", "futures", "stocks", "options", "crypto"]
+    symbols: List[str] = Field(..., description="List of tradable symbols")
+    timeframe: Literal["1m", "5m", "15m", "1h", "4h", "1d"]
+    mode: Literal["paper", "live"] = "paper"
+    status: Literal["draft", "active", "paused"] = "draft"
+    risk_per_trade_pct: float = Field(1.0, ge=0.1, le=5.0)
+    max_concurrent_positions: int = Field(3, ge=1, le=20)
+    code: Optional[str] = Field(None, description="Strategy code or reference to model repo")
+    owner_email: Optional[EmailStr] = None
 
-# Add your own schemas here:
-# --------------------------------------------------
+class Signal(BaseModel):
+    strategy_id: str
+    symbol: str
+    side: Literal["buy", "sell"]
+    confidence: float = Field(0.5, ge=0, le=1)
+    price: Optional[float] = None
+    quantity: Optional[float] = None
+    metadata: Dict[str, Any] = {}
+    generated_at: Optional[datetime] = None
 
-# Note: The Flames database viewer will automatically:
-# 1. Read these schemas from GET /schema endpoint
-# 2. Use them for document validation when creating/editing
-# 3. Handle all database operations (CRUD) directly
-# 4. You don't need to create any database endpoints!
+class Trade(BaseModel):
+    broker: str
+    strategy_id: Optional[str] = None
+    symbol: str
+    side: Literal["buy", "sell"]
+    qty: float
+    price: Optional[float] = None
+    status: Literal["submitted", "filled", "rejected", "canceled", "error"] = "submitted"
+    order_id: Optional[str] = None
+    error: Optional[str] = None
+
+class WebhookEvent(BaseModel):
+    broker: str
+    payload: Dict[str, Any]
+
+class BacktestRequest(BaseModel):
+    strategy_code: str
+    symbol: str
+    timeframe: Literal["1m", "5m", "15m", "1h", "4h", "1d"]
+    start: datetime
+    end: datetime
+    initial_capital: float = 10000.0
+
+# Product catalog/pricing (for SaaS)
+class Plan(BaseModel):
+    name: Literal["free", "pro", "enterprise"]
+    price_monthly: float
+    features: List[str]
